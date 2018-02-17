@@ -8,32 +8,29 @@ type alias Name =
 
 
 type Expr
-    = EUnit
-    | EVarLocal Name
+    = -- Variables
+      EVarLocal Name
     | EVarImported Name Name
+      -- Values
+    | EUnit
     | EChar Char
     | EString String
     | EInt Int
     | EFloat Float
     | EBool Bool
+      -- Containers
     | ETuple2 Expr Expr
+    | ERecord (Dict Name Expr)
     | EList (List Expr)
-    | ENegate Expr
+    | ECtor Name (List Expr)
+      -- Callables
+    | EBinop Name Name Expr Expr
     | ELambda Name Expr
+    | EClosure (Dict Name Expr) Name Expr
+      -- Operations
+    | ENegate Expr
     | ECall Expr Expr
     | ELet ( Name, Expr ) Expr
     | EIf (List ( Expr, Expr )) Expr
-    | EKernel Name Expr
-    | EClosure (Dict Name Expr) Name Expr
-
-
-type Ord
-    = Lt
-    | Lte
-    | Gte
-    | Gt
-
-
-type Eq
-    = Eq
-    | Neq
+    | EUpdate { record : Expr, replacements : Dict Name Expr }
+    | EKernel Name (List Expr)

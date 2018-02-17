@@ -21,8 +21,12 @@ test =
             )
         )
         (EIf
-            [ ( EBool False, ECall (EInt 1) (EVarLocal "add2") )
-            , ( EBool False, ECall (EInt 4) (ECall (EInt 2) (EVarImported "Basics" "add")) )
+            [ ( EBinop "Basics" "/=" (EInt 1) (EInt 1)
+              , ECall (EInt 1) (EVarLocal "add2")
+              )
+            , ( EBinop "Basics" "/=" (EInt 1) (EInt 4)
+              , ECall (EInt 4) (ECall (EInt 2) (EVarImported "Basics" "add"))
+              )
             ]
             (ECall (EInt 5) (EVarLocal "add2"))
         )

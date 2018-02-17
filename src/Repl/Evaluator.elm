@@ -1,7 +1,7 @@
 module Repl.Evaluator exposing (..)
 
 import Dict exposing (Dict)
-import Repl.Ast as Ast exposing (Eq(..), Expr(..), Name, Ord(..))
+import Repl.Ast as Ast exposing (Expr(..), Name)
 import Repl.Evaluator.Kernel as Kernel
 import Repl.Evaluator.Prelude as Prelude
 
@@ -37,9 +37,7 @@ defaultContext =
 evaluate : Context -> Expr -> Result String Expr
 evaluate context expr =
     case expr of
-        EUnit ->
-            Ok EUnit
-
+        -- Variables: Look up from env
         EVarLocal name ->
             getLocal name context
                 |> Result.andThen (evaluate context)
@@ -47,6 +45,10 @@ evaluate context expr =
         EVarImported moduleName varName ->
             getImported moduleName varName context
                 |> Result.andThen (evaluate context)
+
+        -- Values: Already fully evaluated, just return
+        EUnit ->
+            Ok EUnit
 
         EChar char ->
             Ok <| EChar char
@@ -63,16 +65,49 @@ evaluate context expr =
         EBool bool ->
             Ok <| EBool bool
 
+        -- Containers: evaluate members
         ETuple2 left right ->
             Result.map2 ETuple2
                 (evaluate context left)
                 (evaluate context right)
+
+        ERecord pairs ->
+            pairs
+                |> Dict.toList
+                |> List.map (\( k, v ) -> Result.map ((,) k) (evaluate context v))
+                |> List.foldr (Result.map2 (::)) (Ok [])
+                |> Result.map (Dict.fromList >> ERecord)
 
         EList exprs ->
             exprs
                 |> List.map (evaluate context)
                 |> List.foldr (Result.map2 (::)) (Ok [])
                 |> Result.map EList
+
+        ECtor name values ->
+            values
+                |> List.map (evaluate context)
+                |> List.foldr (Result.map2 (::)) (Ok [])
+                |> Result.map (ECtor name)
+
+        -- Lambdas: evauate a lambda as a closure over the current context's locals
+        ELambda argument body ->
+            Ok <| EClosure context.locals argument body
+
+        EClosure env arg body ->
+            Ok <| EClosure env arg body
+
+        -- Operations: execute the semantics of the operation
+        EUpdate { record, replacements } ->
+            case evaluate context record of
+                Ok (ERecord oldRecord) ->
+                    Ok <| ERecord <| Dict.union replacements oldRecord
+
+                Ok _ ->
+                    Err "Cannot update something that isn't a record"
+
+                Err message ->
+                    Err message
 
         ENegate expr ->
             case evaluate context expr of
@@ -88,8 +123,13 @@ evaluate context expr =
                 Err message ->
                     Err message
 
-        ELambda argument body ->
-            Ok <| EClosure context.locals argument body
+        EBinop moduleName opName left right ->
+            case evaluate context (EVarImported moduleName opName) of
+                Ok callable ->
+                    evaluate context <| ECall left <| ECall right callable
+
+                Err message ->
+                    Err message
 
         ECall argument callable ->
             case ( evaluate context argument, evaluate context callable ) of
@@ -124,12 +164,9 @@ evaluate context expr =
         EIf branches elseCase ->
             evaluateIf context branches elseCase
 
-        EClosure env arg body ->
-            Ok <| EClosure env arg body
-
         EKernel name inputs ->
             inputs
-                |> evaluate context
+                |> traverseList (evaluate context)
                 |> Result.andThen (Kernel.evaluate name)
 
 
@@ -152,3 +189,10 @@ evaluateIf context branches elseCase =
 
                 Err message ->
                     Err message
+
+
+traverseList : (a -> Result x b) -> List a -> Result x (List b)
+traverseList f list =
+    list
+        |> List.map f
+        |> List.foldr (Result.map2 (::)) (Ok [])

@@ -1,5 +1,6 @@
 module Repl.Printer exposing (..)
 
+import Dict exposing (Dict)
 import Repl.Ast as Ast exposing (Expr(..))
 
 
@@ -33,6 +34,18 @@ print expr =
         ETuple2 left right ->
             "( " ++ print left ++ ", " ++ print right ++ " )"
 
+        ERecord pairs ->
+            if Dict.isEmpty pairs then
+                "{}"
+            else
+                "{ "
+                    ++ (pairs
+                            |> Dict.toList
+                            |> List.map (\( key, value ) -> key ++ " = " ++ print value)
+                            |> String.join ", "
+                       )
+                    ++ " }"
+
         EList list ->
             case list of
                 [] ->
@@ -41,11 +54,32 @@ print expr =
                 _ ->
                     "[ " ++ String.join ", " (List.map print list) ++ " ]"
 
-        ENegate expr ->
-            "-" ++ print expr
+        ECtor name values ->
+            case values of
+                [] ->
+                    name
+
+                _ ->
+                    name ++ " " ++ String.join " " (List.map print values)
 
         ELambda arg body ->
             "\\" ++ arg ++ " -> " ++ print body
+
+        EClosure _ arg body ->
+            print (ELambda arg body)
+
+        ENegate expr ->
+            "-" ++ print expr
+
+        EBinop _ opName left right ->
+            print left ++ " " ++ opName ++ " " ++ print right
+
+        EUpdate { record, replacements } ->
+            "{ "
+                ++ print record
+                ++ " | "
+                ++ String.join ", " (List.map (\( key, value ) -> key ++ " = " ++ print value) (Dict.toList replacements))
+                ++ " }"
 
         ECall arg callable ->
             print callable ++ " " ++ print arg
@@ -65,9 +99,6 @@ print expr =
                 |> String.join "else "
             )
                 ++ printElse elseCase
-
-        EClosure _ arg body ->
-            print (ELambda arg body)
 
         EKernel _ _ ->
             "XXX"
